@@ -1,32 +1,25 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
-import yt_dlp
+import os
+import re
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
 
-@app.route('/formats', methods=['POST'])
-def get_formats():
-    url = request.json.get('url')
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
+@app.route('/convert', methods=['POST'])
+def convert():
+    data = request.json
+    video_url = data.get('url')
+    if not video_url or not is_valid_youtube_url(video_url):
+        return jsonify({"success": False, "message": "Invalid URL"}), 400
 
-    ydl_opts = {
-        'format': 'best',
-    }
+    video_id = video_url.split('v=')[1] if 'v=' in video_url else video_url.split('/')[-1]
+    download_url = f"https://youtube.com/download/{video_id}.mp4"
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats = [
-                {
-                    "url": f['url'],
-                    "quality": f"{f['format_id']} - {f['format_note']} - {f['resolution']}"
-                } for f in info['formats'] if f['ext'] == 'mp4'
-            ]
-            return jsonify({"formats": formats})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"success": True, "downloadUrl": download_url, "videoId": video_id})
+
+def is_valid_youtube_url(url):
+    youtube_regex = re.compile(
+        r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/.+')
+    return youtube_regex.match(url) is not None
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True)
