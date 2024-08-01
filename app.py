@@ -4,6 +4,13 @@ import re
 
 app = Flask(__name__)
 
+YOUTUBE_API_KEY = os.getenv('AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8')
+
+def is_valid_youtube_url(url):
+    youtube_regex = re.compile(
+        r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/.+')
+    return youtube_regex.match(url) is not None
+
 @app.route('/convert', methods=['POST'])
 def convert():
     data = request.json
@@ -15,11 +22,6 @@ def convert():
     download_url = f"https://youtube.com/download/{video_id}.mp4"
 
     return jsonify({"success": True, "downloadUrl": download_url, "videoId": video_id})
-
-def is_valid_youtube_url(url):
-    youtube_regex = re.compile(
-        r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/.+')
-    return youtube_regex.match(url) is not None
 
 if __name__ == '__main__':
     app.run(debug=True)
