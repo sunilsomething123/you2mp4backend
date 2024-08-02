@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap');
+
+body {
+    font-family: 'Montserrat', sans-serif;
+    background: #121212; /* Dark background for team black */
+    color: #e0e0e0; /* Light text for contrast */
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    max-width: 600px;
+    margin: 20px;
+    padding: 20px;
+    background: linear-gradient(145deg, #1c1c1c, #242424); /* 3D gradient effect */
+    border-radius: 15px;
+    box-shadow: 20px 20px 60px #0e0e0e, -20px -20px 60px #2a2a2a; /* 3D box shadow */
+    text-align: center;
+    border: 1px solid #333;
+}
+
+h1 {
+    margin-bottom: 20px;
+    color: #ffffff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+}
+
+input, select, button {
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    border: 1px solid #444;
+    background: #2a2a2a;
+    color: #ffffff;
+    font-size: 16px;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+input:hover, select:hover, button:hover {
+    border-color: #666;
+    background: #333;
+    box-shadow: 10px 10px 20px #0e0e0e, -10px -10px 20px #2a2a2a; /* 3D hover effect */
+}
+
+button {
+    background: linear-gradient(145deg, #1f1f1f, #3a3a3a);
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+button:hover {
+    background: linear-gradient(145deg, #3a3a3a, #5a5a5a);
+    box-shadow: 20px 20px 40px #0e0e0e, -20px -20px 40px #2a2a2a; /* 3D hover effect */
+    transform: translateY(-5px); /* Lift on hover */
+}
+
+#message {
+    margin-top: 20px;
+    font-size: 18px;
+    color: #ff9800;
+    text-shadow: 0 0 10px rgba(255, 152, 0, 0.7);
+}
+
+.hidden {
+    display: none;
+}
+
+#video-preview {
+    margin-top: 20px;
+}
+
+video {
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid #444;
+    box-shadow: 10px 10px 30px #0e0e0e, -10px -10px 30px #2a2a2a; /* 3D box shadow */
+}
+
+#download-history {
+    margin-top: 20px;
+}
+
+#history-list li {
+    margin-bottom: 10px;
+    padding: 15px;
+    border: 1px solid #444;
+    border-radius: 10px;
+    background: #2a2a2a;
+    color: #ffffff;
+    transition: background 0.3s, color 0.3s, box-shadow 0.3s, transform 0.3s;
+}
+
+#history-list li:hover {
+    background: #333;
+    color: #ff9800;
+    box-shadow: 15px 15px 30px #0e0e0e, -15px -15px 30px #2a2a2a; /* 3D hover effect */
+    transform: translateY(-5px); /* Lift on hover */
+}
+
+/* Social Media Buttons */
+.social-media-buttons {
+    margin-top: 20px;
+}
+
+.social-media-buttons button {
+    margin: 0 5px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    background: #444;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+}
+
+.social-media-buttons button:hover {
+    background: #666;
+    box-shadow: 10px 10px 20px #0e0e0e, -10px -10px 20px #2a2a2a; /* 3D hover effect */
+    transform: scale(1.1); /* Enlarge on hover */
+}
