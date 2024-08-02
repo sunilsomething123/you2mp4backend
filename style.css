@@ -1,73 +1,109 @@
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
+    font-family: 'Montserrat', sans-serif;
+    background: #000;
+    color: #fff;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
 }
 
 .container {
-    width: 100%;
     max-width: 600px;
     margin: 50px auto;
     padding: 20px;
-    background: white;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    background: #222;
+    border-radius: 10px;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
     text-align: center;
 }
 
 h1 {
     margin-bottom: 20px;
+    font-size: 2rem;
+    color: #fff;
 }
 
-input {
-    width: 80%;
-    padding: 10px;
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+input, select, button {
+    padding: 12px;
     margin-bottom: 10px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    border-radius: 5px;
+    border: 1px solid #444;
+    background: #333;
+    color: #fff;
+    font-size: 1rem;
+}
+
+input::placeholder {
+    color: #888;
+}
+
+
 }
 
 button {
-    padding: 10px 20px;
+    background: #ffff;
+    color: #000000;
     border: none;
-    border-radius: 4px;
-    background-color: #007bff;
-    color: white;
     cursor: pointer;
+    font-size: 1rem;
 }
 
 button:hover {
-    background-color: #0056b3;
+    background: #ffffff;
+}
+
+button:active {
+    background: #ffffff;
+}
+
+#message {
+    margin-top: 20px;
+    font-size: 1rem;
 }
 
 .hidden {
     display: none;
 }
 
-#loading {
+#video-preview {
     margin-top: 20px;
 }
 
-#errorMessage {
-    color: red;
-    margin-top: 20px;
+video {
+    max-width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
-#formatsList {
+#download-history {
+    margin-top: 20px;
+    text-align: left;
+}
+
+#history-list {
     list-style: none;
     padding: 0;
-    margin-top: 20px;
 }
 
-#formatsList li {
-    margin: 10px 0;
+#history-list li {
+    margin-bottom: 10px;
 }
 
-#formatsList a {
-    text-decoration: none;
+a {
     color: #007bff;
+    text-decoration: none;
 }
 
-#formatsList a:hover {
+a:hover {
     text-decoration: underline;
+}
+
+a:visited {
+    color: #0056b3;
 }

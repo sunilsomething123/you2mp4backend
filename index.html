@@ -9,16 +9,20 @@
 <body>
     <div class="container">
         <h1>YouTube to MP4 Converter</h1>
-        <form id="downloadForm">
+        <form id="download-form">
             <input type="text" id="url" placeholder="Enter YouTube URL" required>
-            <button type="submit">Get Formats</button>
+            <select id="resolution"></select>
+            <button type="submit">Convert to MP4</button>
         </form>
-        <div id="loading" class="hidden">Loading...</div>
-        <div id="formatsContainer" class="hidden">
-            <ul id="formatsList"></ul>
+        <div id="message"></div>
+        <div id="video-preview" class="hidden">
+            <video id="video" controls></video>
         </div>
-        <div id="errorMessage" class="hidden"></div>
+        <div id="download-history" class="hidden">
+            <h2>Download History</h2>
+            <ul id="history-list"></ul>
+        </div>
     </div>
-    <script src="scripts.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
