@@ -4,7 +4,6 @@ from flask_cors import CORS
 from pytube import YouTube
 from moviepy.editor import *
 import logging
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 CORS(app)
