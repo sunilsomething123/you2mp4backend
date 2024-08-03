@@ -26,11 +26,6 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def custom_secure_filename(filename):
-    filename = unicodedata.normalize('NFKD', filename).encode('ascii', 'ignore').decode('ascii')
-    filename = re.sub(r'[^A-Za-z0-9_.-]', '', filename)
-    return filename
-
 @app.route('/api/video-info', methods=['POST'])
 def get_video_info():
     data = request.json
@@ -69,8 +64,8 @@ def download_video():
         if not video:
             return jsonify({'error': f'No {quality} version available'}), 400
 
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], custom_secure_filename(yt.title) + '.mp4')
-        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=custom_secure_filename(yt.title) + '.mp4')
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], yt.title + '.mp4')
+        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=yt.title + '.mp4')
 
         return jsonify({
             'message': 'Video downloaded successfully',
@@ -123,7 +118,7 @@ def delete_file():
     filename = data.get('filename')
 
     if not filename:
-        return jsonify({'error': 'No filename provided'}),400
+        return jsonify({'error': 'No filename provided'}), 400
 
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -146,4 +141,3 @@ def internal_error(error):
 
 if __name__ == '__main__':
     app.run(debug=True)
-        
