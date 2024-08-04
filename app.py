@@ -24,7 +24,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "YOUR_YOUTUBE_API_KEY"  # Replace with your actual API key
+API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual API key
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
