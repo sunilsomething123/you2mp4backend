@@ -1,11 +1,12 @@
 import os
 import re
 import unicodedata
+import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from pytube import YouTube
 from moviepy.editor import *
-import logging
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -22,31 +23,71 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
+API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual API key
+
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/video-info', methods=['POST'])
 def get_video_info():
-    data = request.json
-    url = data.get('url')
-
-    if not url:
-        return jsonify({'error': 'No URL provided'}), 400
-
     try:
-        yt = YouTube(url)
-        return jsonify({
-            'title': yt.title,
-            'duration': yt.length,
-            'thumbnail': yt.thumbnail_url,
-            'author': yt.author,
-            'views': yt.views,
-            'publish_date': yt.publish_date.isoformat() if yt.publish_date else None
-        })
+        data = request.json
+        url = data.get('url')
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+        
+        # Extract video ID from the URL
+        video_id = extract_video_id(url)
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL"}), 400
+
+        # Log the video ID
+        app.logger.debug(f"Fetching info for video ID: {video_id}")
+
+        # Fetch video information from YouTube API
+        video_data = fetch_video_info(video_id)
+        
+        return jsonify(video_data)
     except Exception as e:
         logger.error(f"Error fetching video info: {str(e)}")
-        return jsonify({'error': 'Failed to fetch video information'}), 500
+        return jsonify({"error": "Failed to fetch video information"}), 500
+
+def extract_video_id(url):
+    """
+    Extract the video ID from the YouTube URL.
+    """
+    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    match = re.match(pattern, url)
+    return match.group(1) if match else None
+
+def fetch_video_info(video_id):
+    """
+    Fetch video information from YouTube API.
+    """
+    params = {
+        'part': 'snippet,contentDetails',
+        'id': video_id,
+        'key': API_KEY
+    }
+    response = requests.get(YOUTUBE_API_URL, params=params)
+    
+    if response.status_code != 200:
+        app.logger.error(f"YouTube API error: {response.status_code}, {response.text}")
+        response.raise_for_status()
+    
+    video_info = response.json()
+    if 'items' not in video_info or not video_info['items']:
+        raise ValueError("No video information found")
+    
+    item = video_info['items'][0]
+    return {
+        'title': item['snippet']['title'],
+        'description': item['snippet']['description'],
+        'thumbnail': item['snippet']['thumbnails']['high']['url'],
+        'duration': item['contentDetails']['duration']
+    }
 
 @app.route('/api/download', methods=['POST'])
 def download_video():
@@ -64,8 +105,9 @@ def download_video():
         if not video:
             return jsonify({'error': f'No {quality} version available'}), 400
 
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], yt.title + '.mp4')
-        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=yt.title + '.mp4')
+        sanitized_title = re.sub(r'[^\w\s-]', '', yt.title)
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp4")
+        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=f"{sanitized_title}.mp4")
 
         return jsonify({
             'message': 'Video downloaded successfully',
