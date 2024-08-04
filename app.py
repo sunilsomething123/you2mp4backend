@@ -5,7 +5,7 @@ import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from pytube import YouTube
-from moviepy.editor import *
+from moviepy.editor import VideoFileClip
 import requests
 
 app = Flask(__name__)
@@ -24,11 +24,10 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual API key
+API_KEY = "YOUR_YOUTUBE_API_KEY"  # Replace with your actual API key
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/video-info', methods=['POST'])
 def get_video_info():
@@ -37,7 +36,7 @@ def get_video_info():
         url = data.get('url')
         if not url:
             return jsonify({"error": "URL is required"}), 400
-        
+
         # Extract video ID from the URL
         video_id = extract_video_id(url)
         if not video_id:
@@ -48,7 +47,7 @@ def get_video_info():
 
         # Fetch video information from YouTube API
         video_data = fetch_video_info(video_id)
-        
+
         return jsonify(video_data)
     except Exception as e:
         logger.error(f"Error fetching video info: {str(e)}")
@@ -72,15 +71,15 @@ def fetch_video_info(video_id):
         'key': API_KEY
     }
     response = requests.get(YOUTUBE_API_URL, params=params)
-    
+
     if response.status_code != 200:
         app.logger.error(f"YouTube API error: {response.status_code}, {response.text}")
         response.raise_for_status()
-    
+
     video_info = response.json()
     if 'items' not in video_info or not video_info['items']:
         raise ValueError("No video information found")
-    
+
     item = video_info['items'][0]
     return {
         'title': item['snippet']['title'],
@@ -109,42 +108,23 @@ def download_video():
         output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp4")
         video.download(output_path=app.config['UPLOAD_FOLDER'], filename=f"{sanitized_title}.mp4")
 
+        video_duration = yt.length  # Duration in seconds
+
+        # Create a 30-second preview
+        preview_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}_preview.mp4")
+        clip = VideoFileClip(output_path).subclip(0, min(30, video_duration))
+        clip.write_videofile(preview_path, codec="libx264")
+
         return jsonify({
             'message': 'Video downloaded successfully',
             'filename': os.path.basename(output_path),
-            'path': output_path
+            'path': output_path,
+            'duration': video_duration,
+            'preview': preview_path
         })
     except Exception as e:
         logger.error(f"Error downloading video: {str(e)}")
         return jsonify({'error': 'Failed to download video'}), 500
-
-@app.route('/api/convert-to-mp3', methods=['POST'])
-def convert_to_mp3():
-    data = request.json
-    filename = data.get('filename')
-
-    if not filename:
-        return jsonify({'error': 'No filename provided'}), 400
-
-    try:
-        video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], os.path.splitext(filename)[0] + '.mp3')
-
-        video = VideoFileClip(video_path)
-        audio = video.audio
-        audio.write_audiofile(audio_path)
-
-        video.close()
-        audio.close()
-
-        return jsonify({
-            'message': 'Video converted to MP3 successfully',
-            'filename': os.path.basename(audio_path),
-            'path': audio_path
-        })
-    except Exception as e:
-        logger.error(f"Error converting video to MP3: {str(e)}")
-        return jsonify({'error': 'Failed to convert video to MP3'}), 500
 
 @app.route('/api/download-file/<filename>')
 def download_file(filename):
@@ -153,25 +133,6 @@ def download_file(filename):
     except Exception as e:
         logger.error(f"Error sending file: {str(e)}")
         return jsonify({'error': 'Failed to send file'}), 500
-
-@app.route('/api/delete-file', methods=['POST'])
-def delete_file():
-    data = request.json
-    filename = data.get('filename')
-
-    if not filename:
-        return jsonify({'error': 'No filename provided'}), 400
-
-    try:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            return jsonify({'message': 'File deleted successfully'})
-        else:
-            return jsonify({'error': 'File not found'}), 404
-    except Exception as e:
-        logger.error(f"Error deleting file: {str(e)}")
-        return jsonify({'error': 'Failed to delete file'}), 500
 
 @app.errorhandler(404)
 def not_found(error):
