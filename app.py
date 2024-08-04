@@ -93,24 +93,21 @@ def fetch_video_info(video_id):
 def download_video():
     data = request.json
     url = data.get('url')
-    quality = data.get('quality', 'highest')
+    quality = data.get('quality', '720p')
 
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
     try:
         yt = YouTube(url)
-        if quality == 'highest':
-            video = yt.streams.get_highest_resolution()
-        else:
-            video = yt.streams.filter(progressive=True, file_extension='mp4', resolution=quality).first()
-        
+        video = yt.streams.filter(progressive=True, file_extension='mp4', resolution=quality).first()
+
         if not video:
-            video = yt.streams.get_highest_resolution()
+            return jsonify({'error': f'No {quality} version available'}), 400
 
         sanitized_title = re.sub(r'[^\w\s-]', '', yt.title)
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}_{video.resolution}.mp4")
-        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=f"{sanitized_title}_{video.resolution}.mp4")
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp4")
+        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=f"{sanitized_title}.mp4")
 
         return jsonify({
             'message': 'Video downloaded successfully',
