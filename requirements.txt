@@ -4,3 +4,4 @@ Flask-CORS==3.0.10
 pytube==12.1.2
 moviepy==1.0.3
 gunicorn==20.1.0
+pydub==0.25.1
