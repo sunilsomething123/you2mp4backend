@@ -1,12 +1,12 @@
 import os
 import re
-import unicodedata
 import logging
+import traceback
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from pytube import YouTube
-from moviepy.editor import *
 import requests
+from pydub import AudioSegment
 
 app = Flask(__name__)
 CORS(app)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 UPLOAD_FOLDER = 'downloads'
-ALLOWED_EXTENSIONS = {'mp4'}
+ALLOWED_EXTENSIONS = {'mp4', 'mp3'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -27,8 +27,7 @@ YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
 API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual API key
 
 def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/video-info', methods=['POST'])
 def get_video_info():
@@ -38,15 +37,12 @@ def get_video_info():
         if not url:
             return jsonify({"error": "URL is required"}), 400
         
-        # Extract video ID from the URL
         video_id = extract_video_id(url)
         if not video_id:
             return jsonify({"error": "Invalid YouTube URL"}), 400
 
-        # Log the video ID
-        app.logger.debug(f"Fetching info for video ID: {video_id}")
+        logger.info(f"Fetching info for video ID: {video_id}")
 
-        # Fetch video information from YouTube API
         video_data = fetch_video_info(video_id)
         
         return jsonify(video_data)
@@ -55,17 +51,11 @@ def get_video_info():
         return jsonify({"error": "Failed to fetch video information"}), 500
 
 def extract_video_id(url):
-    """
-    Extract the video ID from the YouTube URL.
-    """
     pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
     match = re.match(pattern, url)
     return match.group(1) if match else None
 
 def fetch_video_info(video_id):
-    """
-    Fetch video information from YouTube API.
-    """
     params = {
         'part': 'snippet,contentDetails',
         'id': video_id,
@@ -74,7 +64,7 @@ def fetch_video_info(video_id):
     response = requests.get(YOUTUBE_API_URL, params=params)
     
     if response.status_code != 200:
-        app.logger.error(f"YouTube API error: {response.status_code}, {response.text}")
+        logger.error(f"YouTube API error: {response.status_code}, {response.text}")
         response.raise_for_status()
     
     video_info = response.json()
@@ -106,45 +96,30 @@ def download_video():
             return jsonify({'error': f'No {quality} version available'}), 400
 
         sanitized_title = re.sub(r'[^\w\s-]', '', yt.title)
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp4")
-        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=f"{sanitized_title}.mp4")
+        video_filename = f"{sanitized_title}.mp4"
+        video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+        video.download(output_path=app.config['UPLOAD_FOLDER'], filename=video_filename)
+
+        # Extract audio
+        audio = yt.streams.filter(only_audio=True).first()
+        audio_filename = f"{sanitized_title}.mp3"
+        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
+        audio.download(output_path=app.config['UPLOAD_FOLDER'], filename=audio_filename)
+
+        # Convert audio to mp3
+        AudioSegment.from_file(audio_path).export(audio_path, format="mp3")
 
         return jsonify({
-            'message': 'Video downloaded successfully',
-            'filename': os.path.basename(output_path),
-            'path': output_path
+            'message': 'Video downloaded and audio extracted successfully',
+            'video_filename': video_filename,
+            'video_path': video_path,
+            'audio_filename': audio_filename,
+            'audio_path': audio_path
         })
     except Exception as e:
         logger.error(f"Error downloading video: {str(e)}")
-        return jsonify({'error': 'Failed to download video'}), 500
-
-@app.route('/api/convert-to-mp3', methods=['POST'])
-def convert_to_mp3():
-    data = request.json
-    filename = data.get('filename')
-
-    if not filename:
-        return jsonify({'error': 'No filename provided'}), 400
-
-    try:
-        video_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], os.path.splitext(filename)[0] + '.mp3')
-
-        video = VideoFileClip(video_path)
-        audio = video.audio
-        audio.write_audiofile(audio_path)
-
-        video.close()
-        audio.close()
-
-        return jsonify({
-            'message': 'Video converted to MP3 successfully',
-            'filename': os.path.basename(audio_path),
-            'path': audio_path
-        })
-    except Exception as e:
-        logger.error(f"Error converting video to MP3: {str(e)}")
-        return jsonify({'error': 'Failed to convert video to MP3'}), 500
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
 
 @app.route('/api/download-file/<filename>')
 def download_file(filename):
