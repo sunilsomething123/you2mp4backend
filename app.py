@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 import logging
 import traceback
 from flask import Flask, request, jsonify, send_file
