@@ -2,17 +2,15 @@ import os
 import re
 import unicodedata
 import logging
-from flask import Flask, request, jsonify, send_file, Response
+import traceback
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from pytube import YouTube
-from moviepy.editor import VideoFileClip
 import requests
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+from pydub import AudioSegment
+import yt_dlp
 
 app = Flask(__name__)
 CORS(app)
-limiter = Limiter(app, key_func=get_remote_address)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,143 +31,102 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/api/video-info', methods=['POST'])
-@limiter.limit("30 per minute")
 def get_video_info():
     try:
         data = request.json
         url = data.get('url')
         if not url:
             return jsonify({"error": "URL is required"}), 400
-
-        yt = YouTube(url)
         
-        if is_age_restricted(yt):
-            return jsonify({'error': 'This video is age-restricted and cannot be downloaded'}), 403
+        video_id = extract_video_id(url)
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL"}), 400
 
-        formats = []
-        for stream in yt.streams:
-            formats.append({
-                'itag': stream.itag,
-                'mimeType': stream.mime_type,
-                'qualityLabel': stream.resolution if stream.resolution else 'Audio Only',
-                'bitrate': stream.bitrate,
-                'audioBitrate': stream.abr,
-                'contentLength': stream.filesize,
-                'fps': stream.fps if stream.includes_video_track else None,
-            })
+        logger.info(f"Fetching info for video ID: {video_id}")
 
-        return jsonify({
-            'videoDetails': {
-                'videoId': yt.video_id,
-                'title': yt.title,
-                'lengthSeconds': yt.length,
-                'channelId': yt.channel_id,
-                'channelName': yt.author,
-                'description': yt.description,
-                'viewCount': yt.views,
-                'publishDate': yt.publish_date.isoformat() if yt.publish_date else None,
-                'uploadDate': yt.publish_date.isoformat() if yt.publish_date else None,
-                'thumbnails': [yt.thumbnail_url],
-            },
-            'formats': formats
-        })
+        video_data = fetch_video_info(video_id)
+        
+        return jsonify(video_data)
     except Exception as e:
         logger.error(f"Error fetching video info: {str(e)}")
         return jsonify({"error": "Failed to fetch video information"}), 500
 
-def is_age_restricted(yt):
-    return yt.age_restricted
+def extract_video_id(url):
+    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
+    match = re.match(pattern, url)
+    return match.group(1) if match else None
 
-def select_format(formats, quality='highest'):
-    if quality == 'highest':
-        return max(formats, key=lambda f: f['bitrate'] if f['mimeType'].startswith('video') else 0)
-    elif quality == 'lowest':
-        return min(formats, key=lambda f: f['bitrate'] if f['mimeType'].startswith('video') else float('inf'))
-    else:
-        return next((f for f in formats if f['qualityLabel'] == quality), None)
+def fetch_video_info(video_id):
+    params = {
+        'part': 'snippet,contentDetails',
+        'id': video_id,
+        'key': API_KEY
+    }
+    response = requests.get(YOUTUBE_API_URL, params=params)
+    
+    if response.status_code != 200:
+        logger.error(f"YouTube API error: {response.status_code}, {response.text}")
+        response.raise_for_status()
+    
+    video_info = response.json()
+    if 'items' not in video_info or not video_info['items']:
+        raise ValueError("No video information found")
+    
+    item = video_info['items'][0]
+    return {
+        'title': item['snippet']['title'],
+        'description': item['snippet']['description'],
+        'thumbnail': item['snippet']['thumbnails']['high']['url'],
+        'duration': item['contentDetails']['duration']
+    }
 
-@app.route('/api/download', methods=['GET'])
-@limiter.limit("10 per minute")
+@app.route('/api/download', methods=['POST'])
 def download_video():
-    url = request.args.get('url')
-    itag = request.args.get('itag')
-
-    if not url or not itag:
-        return jsonify({'error': 'URL and itag are required'}), 400
-
-    try:
-        yt = YouTube(url)
-        
-        if is_age_restricted(yt):
-            return jsonify({'error': 'This video is age-restricted and cannot be downloaded'}), 403
-
-        stream = yt.streams.get_by_itag(itag)
-        
-        if not stream:
-            return jsonify({'error': 'Selected format not available'}), 400
-
-        sanitized_title = re.sub(r'[^\w\s-]', '', yt.title)
-        filename = f"{sanitized_title}.mp4"
-
-        def generate():
-            with stream.stream() as stream_data:
-                while True:
-                    chunk = stream_data.read(8192)
-                    if not chunk:
-                        break
-                    yield chunk
-
-        headers = {
-            'Content-Type': stream.mime_type,
-            'Content-Disposition': f'attachment; filename="{filename}"'
-        }
-
-        return Response(generate(), headers=headers)
-    except Exception as e:
-        logger.error(f"Error downloading video: {str(e)}")
-        return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
-
-@app.route('/api/convert-to-mp3', methods=['POST'])
-@limiter.limit("5 per minute")
-def convert_to_mp3():
     data = request.json
     url = data.get('url')
+    quality = data.get('quality', 'best')
 
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
     try:
-        yt = YouTube(url)
-        
-        if is_age_restricted(yt):
-            return jsonify({'error': 'This video is age-restricted and cannot be downloaded'}), 403
+        ydl_opts = {
+            'format': quality,
+            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s')
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_title = info.get('title', None)
+            video_ext = info.get('ext', 'mp4')
+            video_filename = f'{video_title}.{video_ext}'
+            video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
 
-        audio_stream = yt.streams.filter(only_audio=True).first()
-        
-        if not audio_stream:
-            return jsonify({'error': 'No audio stream available'}), 400
-
-        sanitized_title = re.sub(r'[^\w\s-]', '', yt.title)
-        temp_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp4")
-        audio_stream.download(output_path=app.config['UPLOAD_FOLDER'], filename=temp_file)
-
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{sanitized_title}.mp3")
-        video = VideoFileClip(temp_file)
-        audio = video.audio
-        audio.write_audiofile(audio_path)
-
-        video.close()
-        audio.close()
-        os.remove(temp_file)
+        # Extract audio
+        audio_opts = {
+            'format': 'bestaudio',
+            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
+        }
+        with yt_dlp.YoutubeDL(audio_opts) as ydl:
+            audio_info = ydl.extract_info(url, download=True)
+            audio_filename = f"{audio_info['title']}.mp3"
+            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
 
         return jsonify({
-            'message': 'Audio extracted and converted to MP3 successfully',
-            'filename': os.path.basename(audio_path),
-            'path': audio_path
+            'message': 'Video downloaded and audio extracted successfully',
+            'video_filename': video_filename,
+            'video_path': video_path,
+            'audio_filename': audio_filename,
+            'audio_path': audio_path
         })
     except Exception as e:
-        logger.error(f"Error converting to MP3: {str(e)}")
-        return jsonify({'error': f'Failed to convert to MP3: {str(e)}'}), 500
+        logger.error(f"Error downloading video: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
 
 @app.route('/api/download-file/<filename>')
 def download_file(filename):
@@ -207,4 +164,5 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    os.makedirs('downloads', exist_ok=True)
     app.run(debug=True)
