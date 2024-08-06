@@ -12,3 +12,7 @@ services:
 
     healthCheckPath: /
     healthCheckTimeout: 100
+disk:
+      - name: downloads
+        mountPath: /app/downloads
+        sizeGB: 1
