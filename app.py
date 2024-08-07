@@ -3,13 +3,16 @@ import re
 import unicodedata
 import logging
 import traceback
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, Response, send_file, stream_with_context
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import requests
 import yt_dlp
 
 app = Flask(__name__)
 CORS(app)
+limiter = Limiter(app, key_func=get_remote_address)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 UPLOAD_FOLDER = 'downloads'
-ALLOWED_EXTENSIONS = {'mp4', 'mp3'}
+ALLOWED_EXTENSIONS = {'mp4', 'mp3', 'webm'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+MAX_FILESIZE = 2 * 1024 * 1024 * 1024  # 2GB
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -29,7 +33,11 @@ API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def sanitize_filename(filename):
+    return re.sub(r'[^\w\-_\. ]', '_', filename)
+
 @app.route('/api/video-info', methods=['POST'])
+@limiter.limit("30 per minute")
 def get_video_info():
     try:
         data = request.json
@@ -79,61 +87,106 @@ def fetch_video_info(video_id):
         'duration': item['contentDetails']['duration']
     }
 
-@app.route('/api/download', methods=['POST'])
+@app.route('/api/download', methods=['GET'])
+@limiter.limit("10 per minute")
 def download_video():
+    url = request.args.get('url')
+    format_id = request.args.get('format')
+
+    if not url or not format_id:
+        return jsonify({'error': 'URL and format are required'}), 400
+
+    try:
+        ydl_opts = {
+            'format': format_id,
+            'outtmpl': '%(title)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            filename = ydl.prepare_filename(info)
+            sanitized_filename = sanitize_filename(filename)
+
+            def generate():
+                with open(filename, 'rb') as file:
+                    while True:
+                        chunk = file.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+                os.remove(filename)  # Clean up the file after streaming
+
+        headers = {
+            'Content-Disposition': f'attachment; filename="{sanitized_filename}"',
+            'Content-Type': 'application/octet-stream'
+        }
+
+        return Response(stream_with_context(generate()), headers=headers)
+
+    except Exception as e:
+        logger.error(f"Error downloading video: {str(e)}")
+        return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
+
+@app.route('/api/convert-to-mp3', methods=['POST'])
+@limiter.limit("5 per minute")
+def convert_to_mp3():
     data = request.json
     url = data.get('url')
-    quality = data.get('quality', 'best')
 
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
     try:
         ydl_opts = {
-            'format': quality,
-            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s')
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_title = info.get('title', None)
-            video_ext = info.get('ext', 'mp4')
-            video_filename = f'{video_title}.{video_ext}'
-            video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
-
-        # Extract audio
-        audio_opts = {
-            'format': 'bestaudio',
-            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s'),
+            'format': 'bestaudio/best',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
-            }]
+            }],
+            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
         }
-        with yt_dlp.YoutubeDL(audio_opts) as ydl:
-            audio_info = ydl.extract_info(url, download=True)
-            audio_filename = f"{audio_info['title']}.mp3"
-            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_filename)
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            mp3_filename = os.path.splitext(filename)[0] + '.mp3'
+            sanitized_mp3_filename = sanitize_filename(mp3_filename)
 
         return jsonify({
-            'message': 'Video downloaded and audio extracted successfully',
-            'video_filename': video_filename,
-            'video_path': video_path,
-            'audio_filename': audio_filename,
-            'audio_path': audio_path
+            'message': 'Audio extracted and converted to MP3 successfully',
+            'filename': sanitized_mp3_filename,
+            'path': mp3_filename
         })
     except Exception as e:
-        logger.error(f"Error downloading video: {str(e)}")
-        logger.error(f"Full traceback: {traceback.format_exc()}")
-        return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
+        logger.error(f"Error converting to MP3: {str(e)}")
+        return jsonify({'error': f'Failed to convert to MP3: {str(e)}'}), 500
 
 @app.route('/api/download-file/<filename>')
 def download_file(filename):
     try:
-        return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename), as_attachment=True)
+        return Response(
+            stream_with_context(generate_file_stream(filename)),
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/octet-stream",
+            },
+        )
     except Exception as e:
         logger.error(f"Error sending file: {str(e)}")
         return jsonify({'error': 'Failed to send file'}), 500
+
+def generate_file_stream(filename):
+    with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'rb') as file:
+        while True:
+            chunk = file.read(8192)
+            if not chunk:
+                break
+            yield chunk
 
 @app.route('/api/delete-file', methods=['POST'])
 def delete_file():
