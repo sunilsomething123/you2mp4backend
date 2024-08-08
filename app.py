@@ -4,8 +4,6 @@ import unicodedata
 import logging
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 import requests
 import yt_dlp
 from dotenv import load_dotenv
@@ -15,12 +13,6 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-limiter = Limiter(
-       get_remote_address,
-       app=app,
-       default_limits=["200 per day", "50 per hour"],
-       storage_uri="memory://"
-   )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +41,7 @@ def sanitize_filename(filename):
     return re.sub(r'[^\w\-_\. ]', '_', filename)
 
 @app.route('/api/video-info', methods=['POST'])
-@limiter.limit("30 per minute")
+# @limiter.limit("30 per minute")  # Removed limiter decorator
 def get_video_info():
     try:
         data = request.json
@@ -139,7 +131,7 @@ def fetch_video_formats(url):
         return formats
 
 @app.route('/api/download', methods=['GET'])
-@limiter.limit("10 per minute")
+# @limiter.limit("10 per minute")  # Removed limiter decorator
 def download_video():
     url = request.args.get('url')
     format_id = request.args.get('format')
@@ -181,7 +173,7 @@ def download_video():
         return jsonify({'error': f'Failed to download video: {str(e)}'}), 500
 
 @app.route('/api/convert-to-mp3', methods=['POST'])
-@limiter.limit("5 per minute")
+# @limiter.limit("5 per minute")  # Removed limiter decorator
 def convert_to_mp3():
     data = request.json
     url = data.get('url')
@@ -258,14 +250,5 @@ def delete_file():
         logger.error(f"Error deleting file: {str(e)}")
         return jsonify({'error': 'Failed to delete file'}), 500
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
-
 if __name__ == '__main__':
-    os.makedirs('downloads', exist_ok=True)
     app.run(debug=True)
