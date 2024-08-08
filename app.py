@@ -2,16 +2,19 @@ import os
 import re
 import unicodedata
 import logging
-import traceback
-from flask import Flask, request, jsonify, Response, send_file, stream_with_context
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import requests
 import yt_dlp
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 limiter = Limiter(app, key_func=get_remote_address)
 
 # Configure logging
@@ -28,7 +31,11 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "AIzaSyBuLDbPhS5QddaZaETco_-MUtngmGSscH8"  # Replace with your actual API key
+API_KEY = os.environ.get('YOUTUBE_API_KEY')
+
+if not API_KEY:
+    logger.error("YouTube API key not found. Please set the YOUTUBE_API_KEY environment variable.")
+    raise ValueError("YouTube API key is missing")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -52,20 +59,33 @@ def get_video_info():
         logger.info(f"Fetching info for video ID: {video_id}")
 
         video_data = fetch_video_info(video_id)
+        formats = fetch_video_formats(url)
         
-        return jsonify(video_data)
+        return jsonify({**video_data, "formats": formats})
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error: {str(e)}")
+        return jsonify({"error": "Network error occurred"}), 500
+    except ValueError as e:
+        logger.error(f"Value error: {str(e)}")
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.error(f"Error fetching video info: {str(e)}")
-        return jsonify({"error": "Failed to fetch video information"}), 500
+        logger.error(f"Unexpected error: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 def extract_video_id(url):
-    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
-    match = re.match(pattern, url)
-    return match.group(1) if match else None
+    patterns = [
+        r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(?:embed\/)?(?:v\/)?(?:shorts\/)?(?:live\/)?(?P<id>[^\/\?\&]+)',
+        r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(?P<id>[^\/\?\&]+)',
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, url)
+        if match:
+            return match.group('id')
+    return None
 
 def fetch_video_info(video_id):
     params = {
-        'part': 'snippet,contentDetails',
+        'part': 'snippet,contentDetails,statistics',
         'id': video_id,
         'key': API_KEY
     }
@@ -81,11 +101,37 @@ def fetch_video_info(video_id):
     
     item = video_info['items'][0]
     return {
+        'id': video_id,
         'title': item['snippet']['title'],
         'description': item['snippet']['description'],
         'thumbnail': item['snippet']['thumbnails']['high']['url'],
-        'duration': item['contentDetails']['duration']
+        'duration': item['contentDetails']['duration'],
+        'viewCount': item['statistics']['viewCount'],
+        'likeCount': item['statistics'].get('likeCount', 'N/A'),
+        'publishedAt': item['snippet']['publishedAt']
     }
+
+def fetch_video_formats(url):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'youtube_include_dash_manifest': False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        formats = []
+        for f in info['formats']:
+            if 'asr' not in f:  # Skip formats without audio
+                formats.append({
+                    'format_id': f['format_id'],
+                    'ext': f['ext'],
+                    'resolution': f.get('resolution', 'N/A'),
+                    'filesize': f.get('filesize', 0),
+                    'vcodec': f.get('vcodec', 'N/A'),
+                    'acodec': f.get('acodec', 'N/A'),
+                })
+        return formats
 
 @app.route('/api/download', methods=['GET'])
 @limiter.limit("10 per minute")
@@ -99,13 +145,13 @@ def download_video():
     try:
         ydl_opts = {
             'format': format_id,
-            'outtmpl': '%(title)s.%(ext)s',
+            'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], '%(title)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             sanitized_filename = sanitize_filename(filename)
 
