@@ -148,7 +148,7 @@ def convert_to_mp3():
 def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if not os.path.isfile(file_path)):
+        if not os.path.isfile(file_path):
             return jsonify({'error': 'File not found'}), 404
         return send_file(file_path, as_attachment=True)
     except Exception as e:
