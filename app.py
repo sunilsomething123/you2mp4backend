@@ -39,24 +39,23 @@ def extract_video_id(url):
     return match.group(1) if match else None
 
 def fetch_video_info(video_id):
-    """
-    Fetch video information from YouTube API.
-    """
+    logger.info(f"Fetching info for video ID: {video_id}")
     params = {
         'part': 'snippet,contentDetails',
         'id': video_id,
         'key': API_KEY
     }
+    logger.info(f"Requesting YouTube API with URL: {YOUTUBE_API_URL} and params: {params}")
     response = requests.get(YOUTUBE_API_URL, params=params)
-    
+
     if response.status_code != 200:
         logger.error(f"YouTube API error: {response.status_code}, {response.text}")
         response.raise_for_status()
-    
+
     video_info = response.json()
     if 'items' not in video_info or not video_info['items']:
         raise ValueError("No video information found")
-    
+
     item = video_info['items'][0]
     return {
         'title': item['snippet']['title'],
