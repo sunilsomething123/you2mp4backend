@@ -1,6 +1,5 @@
 import os
 import re
-import unicodedata
 import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -24,7 +23,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "AIzaSyAL6k2uiQclis3E0nhj-1YSVJVjF-iBy9g"  # Replace with your actual API key
+API_KEY = "YOUR_API_KEY_HERE"  # Replace with your actual API key
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -50,7 +49,7 @@ def fetch_video_info(video_id):
     response = requests.get(YOUTUBE_API_URL, params=params)
     
     if response.status_code != 200:
-        app.logger.error(f"YouTube API error: {response.status_code}, {response.text}")
+        logger.error(f"YouTube API error: {response.status_code}, {response.text}")
         response.raise_for_status()
     
     video_info = response.json()
@@ -66,28 +65,26 @@ def fetch_video_info(video_id):
     }
 
 @app.route('/api/video-info', methods=['POST'])
-def get_video_info():
+def download_video():
+    data = request.json
+    url = data.get('url')
+    quality = data.get('quality', '720p')
+
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+
     try:
-        data = request.json
-        url = data.get('url')
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-        
-        # Extract video ID from the URL
-        video_id = extract_video_id(url)
-        if not video_id:
-            return jsonify({"error": "Invalid YouTube URL"}), 400
+        yt = YouTube(url)
+        video = yt.streams.filter(progressive=True, file_extension='mp4', resolution=quality).first()
 
-        # Log the video ID
-        app.logger.debug(f"Fetching info for video ID: {video_id}")
+        if not video:
+            return jsonify({'error': f'No {quality} version available'}), 400
 
-        # Fetch video information from YouTube API
-        video_data = fetch_video_info(video_id)
-        
-        return jsonify(video_data)
+        download_url = video.url  # This is the direct URL to the video
+        return jsonify({'download_url': download_url})
     except Exception as e:
-        logger.error(f"Error fetching video info: {str(e)}")
-        return jsonify({"error": "Failed to fetch video information"}), 500
+        logger.error(f"Error processing download request: {str(e)}")
+        return jsonify({'error': 'Failed to process download request'}), 500
 
 @app.route('/api/download', methods=['POST'])
 def download_video():
@@ -149,7 +146,10 @@ def convert_to_mp3():
 @app.route('/api/download-file/<filename>')
 def download_file(filename):
     try:
-        return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename), as_attachment=True)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        if not os.path.isfile(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        return send_file(file_path, as_attachment=True)
     except Exception as e:
         logger.error(f"Error sending file: {str(e)}")
         return jsonify({'error': 'Failed to send file'}), 500
