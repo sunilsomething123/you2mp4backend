@@ -1,5 +1,6 @@
 import os
 import re
+import unicodedata
 import logging
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -23,7 +24,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "YOUR_API_KEY_HERE"  # Replace with your actual API key
+API_KEY = "AIzaSyAL6k2uiQclis3E0nhj-1YSVJVjF-iBy9g"  # Replace with your actual API key
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -65,7 +66,7 @@ def fetch_video_info(video_id):
     }
 
 @app.route('/api/video-info', methods=['POST'])
-def download_video():
+def get_video_info():
     data = request.json
     url = data.get('url')
     quality = data.get('quality', '720p')
@@ -87,7 +88,7 @@ def download_video():
         return jsonify({'error': 'Failed to process download request'}), 500
 
 @app.route('/api/download', methods=['POST'])
-def download_video():
+def download_video_file():
     data = request.json
     url = data.get('url')
     quality = data.get('quality', '720p')
@@ -147,7 +148,7 @@ def convert_to_mp3():
 def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if not os.path.isfile(file_path):
+        if not os.path.isfile(file_path)):
             return jsonify({'error': 'File not found'}), 404
         return send_file(file_path, as_attachment=True)
     except Exception as e:
