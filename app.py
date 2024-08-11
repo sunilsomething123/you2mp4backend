@@ -28,13 +28,21 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def extract_video_id(url):
+def extract_video_id(youtube_url):
     """
-    Extract the video ID from the YouTube URL.
+    Extract the video ID from a YouTube URL.
     """
-    pattern = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
-    match = re.match(pattern, url)
-    return match.group(1) if match else None
+    video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', youtube_url)
+    if video_id_match:
+        return video_id_match.group(1)
+    return None
+
+def generate_google_video_url(video_id):
+    """
+    Generate a direct Google Video URL for the given YouTube video ID.
+    """
+    # Placeholder logic: In a real-world scenario, you would use the YouTube Data API or custom logic to fetch the direct link
+    return f"https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback?expire=1723369330&ei=EjO4ZsKHJbms9fwPsJi86AY&ip=2409%3A408c%3Aae3d%3A75c1%3Ae311%3Aec28%3A7505%3A966e&id=o-AGtLnLMQRFzN8bgrO2h9eQB3MnDBMTKyk5reLhTmVZUb&itag=18&source=youtube&requiressl=yes&mime=video%2Fmp4&dur=219.985&lmt=1697894246773778&mt=1723347409&ratebypass=yes&vprv=1&clen=13884482&n={video_id}"
 
 def fetch_video_info(video_id):
     """
@@ -145,21 +153,19 @@ def delete_file():
         logger.error(f"Error deleting file: {str(e)}")
         return jsonify({'error': 'Failed to delete file'}), 500
 
-@app.route('/redirect', methods=['GET'])
-def redirect_to_google_video():
-    # Get the video URL from the query parameter
-    video_url = request.args.get('video_url')
+@app.route('/download', methods=['GET'])
+def download_video():
+    youtube_url = request.args.get('url')
+    if not youtube_url:
+        return jsonify({"error": "No URL provided"}), 400
     
-    if video_url:
-        app.logger.info(f"Redirecting to video URL: {video_url}")
-        return redirect(video_url)
-    else:
-        return "Invalid request. Video URL is required.", 400
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
-
+    video_id = extract_video_id(youtube_url)
+    if not video_id:
+        return jsonify({"error": "Invalid YouTube URL"}), 400
+    
+    google_video_url = generate_google_video_url(video_id)
+    return redirect(google_video_url)
+    
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
