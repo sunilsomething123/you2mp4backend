@@ -1,11 +1,9 @@
 import os
 import re
-import unicodedata
 import logging
 from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from moviepy.editor import VideoFileClip
-import yt_dlp
 import requests
 
 app = Flask(__name__)
@@ -65,27 +63,6 @@ def fetch_video_info(video_id):
         'duration': item['contentDetails']['duration']
     }
 
-def extract_mp4_download_url(youtube_url):
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
-        'quiet': True,
-    }
-    
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(youtube_url, download=False)
-        formats = info_dict.get('formats', [])
-        mp4_url = None
-
-        for f in formats:
-            if f['ext'] == 'mp4' and 'url' in f:
-                mp4_url = f['url']
-                break
-
-        if not mp4_url:
-            raise Exception("MP4 format not found")
-        
-        return mp4_url
-
 @app.route('/api/video-info', methods=['POST'])
 def get_video_info():
     try:
@@ -109,20 +86,6 @@ def get_video_info():
     except Exception as e:
         logger.error(f"Error fetching video info: {str(e)}")
         return jsonify({"error": "Failed to fetch video information"}), 500
-
-@app.route('/api/get-download-url', methods=['POST'])
-def get_download_url():
-    try:
-        data = request.json
-        url = data.get('url')
-
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-
-        download_url = extract_mp4_download_url(url)
-        return jsonify({"download_url": download_url})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/convert-to-mp3', methods=['POST'])
 def convert_to_mp3():
@@ -181,6 +144,16 @@ def delete_file():
     except Exception as e:
         logger.error(f"Error deleting file: {str(e)}")
         return jsonify({'error': 'Failed to delete file'}), 500
+
+@app.route('/redirect', methods=['GET'])
+def redirect_to_google_video():
+    # Get the video URL from the query parameter
+    video_url = request.args.get('video_url')
+    
+    if video_url:
+        return redirect(video_url)
+    else:
+        return "Invalid request. Video URL is required.", 400
 
 @app.errorhandler(404)
 def not_found(error):
