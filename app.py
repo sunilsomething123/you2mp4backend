@@ -2,6 +2,7 @@ import os
 import re
 import unicodedata
 import logging
+import subprocess 
 from flask import Flask, request, jsonify, send_file, redirect 
 from flask_cors import CORS
 from pytube import YouTube
@@ -90,22 +91,26 @@ def fetch_video_info(video_id):
     }
 
 @app.route('/download', methods=['POST'])
-def download():
-    video_url = request.form['url']
-    quality = request.form.get('quality', '720p')
-    
-    try:
-        yt = YouTube(video_url)
-        video = yt.streams.filter(res=quality, file_extension='mp4').first()
+def download_video(url):
+    command = [
+        'yt-dlp', '-vU', '-f', 'mp4', url
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
 
-        if video:
-            download_url = video.url
-            return redirect(download_url)
-        else:
-            return "Quality not available", 400
+    # Print the debug output
+    print(stdout.decode())
+    print(stderr.decode())
+
+if __name__ == "__main__":
+    # Example with different YouTube link formats
+    video_urls = [
+        "https://www.youtube.com/watch?v=B2FXNgkdawE",
+        "https://youtu.be/B2FXNgkdawE"
+    ]
     
-    except Exception as e:
-        return f"Error: {str(e)}", 500
+    for video_url in video_urls:
+        download_video(video_url)
 
 @app.route('/api/convert-to-mp3', methods=['POST'])
 def convert_to_mp3():
