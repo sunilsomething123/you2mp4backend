@@ -2,11 +2,10 @@ import os
 import re
 import unicodedata
 import logging
-import subprocess 
-from flask import Flask, request, jsonify, send_file, redirect 
+from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
-from pytube import YouTube
 from moviepy.editor import VideoFileClip
+import yt_dlp
 import requests
 
 app = Flask(__name__)
@@ -30,30 +29,6 @@ API_KEY = "AIzaSyAL6k2uiQclis3E0nhj-1YSVJVjF-iBy9g"  # Replace with your actual 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/api/video-info', methods=['POST'])
-def get_video_info():
-    try:
-        data = request.json
-        url = data.get('url')
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
-        
-        # Extract video ID from the URL
-        video_id = extract_video_id(url)
-        if not video_id:
-            return jsonify({"error": "Invalid YouTube URL"}), 400
-
-        # Log the video ID
-        app.logger.debug(f"Fetching info for video ID: {video_id}")
-
-        # Fetch video information from YouTube API
-        video_data = fetch_video_info(video_id)
-        
-        return jsonify(video_data)
-    except Exception as e:
-        logger.error(f"Error fetching video info: {str(e)}")
-        return jsonify({"error": "Failed to fetch video information"}), 500
 
 def extract_video_id(url):
     """
@@ -90,27 +65,64 @@ def fetch_video_info(video_id):
         'duration': item['contentDetails']['duration']
     }
 
-@app.route('/download', methods=['POST'])
-def download_video(url):
-    command = [
-        'yt-dlp', '-vU', '-f', 'mp4', url
-    ]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-
-    # Print the debug output
-    print(stdout.decode())
-    print(stderr.decode())
-
-if __name__ == "__main__":
-    # Example with different YouTube link formats
-    video_urls = [
-        "https://www.youtube.com/watch?v=B2FXNgkdawE",
-        "https://youtu.be/B2FXNgkdawE"
-    ]
+def extract_mp4_download_url(youtube_url):
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+        'quiet': True,
+    }
     
-    for video_url in video_urls:
-        download_video(video_url)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(youtube_url, download=False)
+        formats = info_dict.get('formats', [])
+        mp4_url = None
+
+        for f in formats:
+            if f['ext'] == 'mp4' and 'url' in f:
+                mp4_url = f['url']
+                break
+
+        if not mp4_url:
+            raise Exception("MP4 format not found")
+        
+        return mp4_url
+
+@app.route('/api/video-info', methods=['POST'])
+def get_video_info():
+    try:
+        data = request.json
+        url = data.get('url')
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+        
+        # Extract video ID from the URL
+        video_id = extract_video_id(url)
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL"}), 400
+
+        # Log the video ID
+        app.logger.debug(f"Fetching info for video ID: {video_id}")
+
+        # Fetch video information from YouTube API
+        video_data = fetch_video_info(video_id)
+        
+        return jsonify(video_data)
+    except Exception as e:
+        logger.error(f"Error fetching video info: {str(e)}")
+        return jsonify({"error": "Failed to fetch video information"}), 500
+
+@app.route('/api/get-download-url', methods=['POST'])
+def get_download_url():
+    try:
+        data = request.json
+        url = data.get('url')
+
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+
+        download_url = extract_mp4_download_url(url)
+        return jsonify({"download_url": download_url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/convert-to-mp3', methods=['POST'])
 def convert_to_mp3():
