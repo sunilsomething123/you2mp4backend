@@ -151,6 +151,7 @@ def redirect_to_google_video():
     video_url = request.args.get('video_url')
     
     if video_url:
+        app.logger.info(f"Redirecting to video URL: {video_url}")
         return redirect(video_url)
     else:
         return "Invalid request. Video URL is required.", 400
