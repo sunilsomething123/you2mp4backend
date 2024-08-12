@@ -22,7 +22,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = "AIzaSyAL6k2uiQclis3E0nhj-1YSVJVjF-iBy9g"  # Replace with your actual API key
+API_KEY = os.getenv('YOUTUBE_API_KEY', 'your-default-api-key')  # Replace with your actual API key
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -39,10 +39,29 @@ def extract_video_id(youtube_url):
 
 def generate_google_video_url(video_id):
     """
-    Generate a direct Google Video URL for the given YouTube video ID.
+    Generate a placeholder Google Video URL for the given YouTube video ID.
     """
-    # Placeholder logic: In a real-world scenario, you would use the YouTube Data API or custom logic to fetch the direct link
-    return f"https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback?expire=1723369330&ei=EjO4ZsKHJbms9fwPsJi86AY&ip=2409%3A408c%3Aae3d%3A75c1%3Ae311%3Aec28%3A7505%3A966e&id=o-AGtLnLMQRFzN8bgrO2h9eQB3MnDBMTKyk5reLhTmVZUb&itag=18&source=youtube&requiressl=yes&mime=video%2Fmp4&dur=219.985&lmt=1697894246773778&mt=1723347409&ratebypass=yes&vprv=1&clen=13884482&n={video_id}"
+    base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
+    params = {
+        "expire": "1723369330",  # Expiration time
+        "ei": "EjO4ZsKHJbms9fwPsJi86AY",  # Example parameter
+        "ip": "2409%3A408c%3Aae3d%3A75c1%3Ae311%3Aec28%3A7505%3A966e",  # Example IP
+        "id": f"o-{video_id}",
+        "itag": "18",
+        "source": "youtube",
+        "requiressl": "yes",
+        "mime": "video/mp4",
+        "dur": "219.985",
+        "lmt": "1697894246773778",
+        "mt": "1723347409",
+        "ratebypass": "yes",
+        "vprv": "1",
+        "clen": "13884482",
+        "n": video_id
+    }
+    # Construct the URL
+    url_params = "&".join([f"{key}={value}" for key, value in params.items()])
+    return f"{base_url}?{url_params}"
 
 def fetch_video_info(video_id):
     """
