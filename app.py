@@ -43,7 +43,7 @@ def generate_google_video_url(video_id):
     """
     base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
     params = {
-        "expire": "1723369330",  # Expiration time
+        "expire": "1723369330",  # Example expiration time
         "ei": "EjO4ZsKHJbms9fwPsJi86AY",  # Example parameter
         "ip": "2409%3A408c%3Aae3d%3A75c1%3Ae311%3Aec28%3A7505%3A966e",  # Example IP
         "id": f"o-{video_id}",
@@ -62,7 +62,7 @@ def generate_google_video_url(video_id):
     # Construct the URL
     url_params = "&".join([f"{key}={value}" for key, value in params.items()])
     return f"{base_url}?{url_params}"
-
+    
 def fetch_video_info(video_id):
     """
     Fetch video information from YouTube API.
@@ -172,8 +172,8 @@ def delete_file():
         logger.error(f"Error deleting file: {str(e)}")
         return jsonify({'error': 'Failed to delete file'}), 500
 
-@app.route('/download', methods=['GET'])
-def download_video():
+@app.route('/api/get-google-video-url', methods=['GET'])
+def get_google_video_url():
     youtube_url = request.args.get('url')
     if not youtube_url:
         return jsonify({"error": "No URL provided"}), 400
@@ -183,11 +183,11 @@ def download_video():
         return jsonify({"error": "Invalid YouTube URL"}), 400
     
     google_video_url = generate_google_video_url(video_id)
-    return redirect(google_video_url)
-    
+    return jsonify({"google_video_url": google_video_url})
+
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
-
+    
 if __name__ == '__main__':
     app.run(debug=True)
