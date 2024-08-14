@@ -7,8 +7,8 @@ from moviepy.editor import VideoFileClip
 import requests
 
 app = Flask(__name__)
-# Configure CORS with specific settings
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST"]}})
+# Enable CORS for all routes and origins
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
