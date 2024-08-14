@@ -7,6 +7,7 @@ from moviepy.editor import VideoFileClip
 import requests
 
 app = Flask(__name__)
+# Configure CORS with specific settings
 CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST"]}})
 
 # Configure logging
@@ -29,6 +30,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def extract_video_id(youtube_url):
+    "def extract_video_id(youtube_url):
     """
     Extract the video ID from a YouTube URL.
     """
@@ -39,7 +41,7 @@ def extract_video_id(youtube_url):
 
 def generate_google_video_url(video_id):
     """
-    Generate a placeholder Google Video URL for the given YouTube video ID.
+    Generate a Google Video URL for the given YouTube video ID.
     """
     base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
     params = {
@@ -184,9 +186,8 @@ def get_google_video_url():
     
     google_video_url = generate_google_video_url(video_id)
     
-    # Redirect to Vercel frontend
-    redirect_url = f"https://you2-mp4.vercel.app/download?video_url={google_video_url}"
-    return redirect(redirect_url)
+    # Directly redirect to the Google video playback URL
+    return redirect(google_video_url, code=302)
 
 @app.errorhandler(500)
 def internal_error(error):
