@@ -183,7 +183,10 @@ def get_google_video_url():
         return jsonify({"error": "Invalid YouTube URL"}), 400
     
     google_video_url = generate_google_video_url(video_id)
-    return jsonify({"google_video_url": google_video_url})
+    
+    # Redirect to Vercel frontend
+    redirect_url = f"https://you2-mp4.vercel.app/download?video_url={google_video_url}"
+    return redirect(redirect_url)
 
 @app.errorhandler(500)
 def internal_error(error):
