@@ -40,7 +40,7 @@ def extract_video_id(youtube_url):
 
 def generate_google_video_url(video_id):
     """
-    Generate a Google Video URL for the given YouTube video ID.
+    Generate a Google Video URL for the given YouTube video ID with CORS Anywhere.
     """
     base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
     params = {
@@ -62,7 +62,11 @@ def generate_google_video_url(video_id):
     }
     # Construct the URL
     url_params = "&".join([f"{key}={value}" for key, value in params.items()])
-    return f"{base_url}?{url_params}"
+    google_video_url = f"{base_url}?{url_params}"
+    
+    # Prepend the CORS Anywhere proxy URL
+    cors_proxy_url = "https://cors-anywhere.herokuapp.com/"
+    return f"{cors_proxy_url}{google_video_url}"
     
 def fetch_video_info(video_id):
     """
