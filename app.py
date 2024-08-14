@@ -30,7 +30,6 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def extract_video_id(youtube_url):
-    "def extract_video_id(youtube_url):
     """
     Extract the video ID from a YouTube URL.
     """
