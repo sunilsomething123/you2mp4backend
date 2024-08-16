@@ -151,85 +151,74 @@ def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if not os.path.isfile(file_path):
-            return jsonify({'error': 'File not found'}), 404
-        return send_file(file_path, as_attachment=True)
-    except Exception as e:
-        logger.error(f"Error sending file: {str(e)}")
-        return jsonify({'error': 'Failed to send file'}), 500
+def extract_video_id(youtube_url):
+    """Extract the video ID from a YouTube URL."""
+    match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', youtube_url)
+    return match.group(1) if match else None
 
-@app.route('/api/delete-file', methods=['POST'])
-def delete_file():
-    data = request.json
-    filename = data.get('filename')
+def generate_google_video_url(video_id):
+    """Generate a Google Video Playback URL."""
+    base_url = f"https://www.youtube.com/watch?v={video_id}"
+    # Assuming the direct URL is usable. Actual URL may need proper format or headers.
+    return base_url
 
-    if not filename:
-        return jsonify({'error': 'No filename provided'}), 400
-
+def download_from_google_video(url, file_path):
+    """Download video from the Google Video Playback URL."""
     try:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            return jsonify({'message': 'File deleted successfully'})
-        else:
-            return jsonify({'error': 'File not found'}), 404
-    except Exception as e:
-        logger.error(f"Error deleting file: {str(e)}")
-        return jsonify({'error': 'Failed to delete file'}), 500
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
 
-@app.route('/api/get-google-video-url', methods=['GET'])
-def get_google_video_url():
-    youtube_url = request.args.get('url')
+        with open(file_path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        return file_path
+    except requests.RequestException as e:
+        logger.error(f"Download failed: {e}")
+        raise
+
+@app.route('/api/download-video', methods=['POST'])
+def download_video():
+    """Download video from YouTube and save it to the server."""
+    youtube_url = request.json.get('url')
     if not youtube_url:
-        return jsonify({"error": "No URL provided"}), 400
-    
+        return jsonify({"error": "URL is required"}), 400
+
     video_id = extract_video_id(youtube_url)
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL"}), 400
-    
+
     google_video_url = generate_google_video_url(video_id)
-    
-    # Directly redirect to the Google video playback URL
-    return redirect(google_video_url, code=302)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{video_id}.mp4")
+
+    try:
+        download_from_google_video(google_video_url, file_path)
+        return send_file(file_path, as_attachment=True, attachment_filename=f"{video_id}.mp4")
+    except Exception as e:
+        logger.error(f"Error during video download: {e}")
+        return jsonify({"error": "Failed to download video"}), 500
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    """Handle file upload and save to server."""
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
+
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        
-        # Set a cookie after a successful upload
-        response = make_response(jsonify({'message': 'File successfully uploaded'}))
-        response.set_cookie('upload_status', 'success', 
-                            secure=True, 
-                            httponly=True, 
-                            samesite='None', 
-                            max_age=3600)
-        return response
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        return jsonify({'message': 'File successfully uploaded'})
     return jsonify({'error': 'File type not allowed'}), 400
-
-@app.route('/set-cookie', methods=['GET'])
-def set_cookie():
-    response = make_response(jsonify({'message': 'Cookie is set'}))
-    response.set_cookie('my_cookie', 'cookie_value', 
-                        secure=True,  # Required for SameSite=None
-                        httponly=True,  # To prevent JavaScript access
-                        samesite='None',  # 'None' to allow cross-site usage
-                        max_age=3600)  # Cookie expiration time
-    return response
-
-@app.route('/get-cookie', methods=['GET'])
-def get_cookie():
-    cookie_value = request.cookies.get('my_cookie', 'Cookie not found')
-    return jsonify({'cookie_value': cookie_value})
 
 @app.errorhandler(500)
 def internal_error(error):
+    """Handle internal server errors."""
+    logger.error(f"Internal server error: {error}")
     return jsonify({'error': 'Internal server error'}), 500
-
+        
 if __name__ == '__main__':
     app.run(debug=True)
