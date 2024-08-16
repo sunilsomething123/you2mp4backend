@@ -1,10 +1,11 @@
 import os
 import re
 import logging
-from flask import Flask, request, jsonify, send_file, redirect
+from flask import Flask, request, jsonify, send_file, redirect, make_response
 from flask_cors import CORS
 from moviepy.editor import VideoFileClip
 import requests
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 # Enable CORS for all routes and origins
@@ -40,7 +41,7 @@ def extract_video_id(youtube_url):
 
 def generate_google_video_url(video_id):
     """
-    Generate a Google Video URL for the given YouTube video ID with CORS Anywhere.
+    Generate a Google Video URL for the given YouTube video ID.
     """
     base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
     params = {
@@ -64,10 +65,8 @@ def generate_google_video_url(video_id):
     url_params = "&".join([f"{key}={value}" for key, value in params.items()])
     google_video_url = f"{base_url}?{url_params}"
     
-    # Prepend the CORS Anywhere proxy URL
-    cors_proxy_url = "https://cors-anywhere.herokuapp.com/"
-    return f"{cors_proxy_url}{google_video_url}"
-    
+    return google_video_url
+
 def fetch_video_info(video_id):
     """
     Fetch video information from YouTube API.
@@ -192,9 +191,45 @@ def get_google_video_url():
     # Directly redirect to the Google video playback URL
     return redirect(google_video_url, code=302)
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        
+        # Set a cookie after a successful upload
+        response = make_response(jsonify({'message': 'File successfully uploaded'}))
+        response.set_cookie('upload_status', 'success', 
+                            secure=True, 
+                            httponly=True, 
+                            samesite='None', 
+                            max_age=3600)
+        return response
+    return jsonify({'error': 'File type not allowed'}), 400
+
+@app.route('/set-cookie', methods=['GET'])
+def set_cookie():
+    response = make_response(jsonify({'message': 'Cookie is set'}))
+    response.set_cookie('my_cookie', 'cookie_value', 
+                        secure=True,  # Required for SameSite=None
+                        httponly=True,  # To prevent JavaScript access
+                        samesite='None',  # 'None' to allow cross-site usage
+                        max_age=3600)  # Cookie expiration time
+    return response
+
+@app.route('/get-cookie', methods=['GET'])
+def get_cookie():
+    cookie_value = request.cookies.get('my_cookie', 'Cookie not found')
+    return jsonify({'cookie_value': cookie_value})
+
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
-    
+
 if __name__ == '__main__':
     app.run(debug=True)
