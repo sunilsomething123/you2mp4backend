@@ -1,11 +1,10 @@
 import os
 import re
 import logging
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from moviepy.editor import VideoFileClip
 import requests
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 # Enable CORS for all routes and origins
@@ -24,7 +23,7 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-API_KEY = os.getenv('YOUTUBE_API_KEY', 'AIzaSyAL6k2uiQclis3E0nhj-1YSVJVjF-iBy9g')  # Replace with your actual API key
+API_KEY = os.getenv('YOUTUBE_API_KEY', 'YOUR_API_KEY_HERE')  # Replace with your actual API key
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -41,7 +40,7 @@ def extract_video_id(youtube_url):
 
 def generate_google_video_url(video_id):
     """
-    Generate a Google Video URL for the given YouTube video ID.
+    Generate a Google Video URL for the given YouTube video ID with CORS Anywhere.
     """
     base_url = "https://rr4---sn-gwpa-cagel.googlevideo.com/videoplayback"
     params = {
@@ -65,7 +64,9 @@ def generate_google_video_url(video_id):
     url_params = "&".join([f"{key}={value}" for key, value in params.items()])
     google_video_url = f"{base_url}?{url_params}"
     
-    return google_video_url
+    # Prepend the CORS Anywhere proxy URL
+    cors_proxy_url = "https://cors-anywhere.herokuapp.com/"
+    return f"{cors_proxy_url}{google_video_url}"
 
 def fetch_video_info(video_id):
     """
@@ -154,66 +155,46 @@ def download_file(filename):
             return jsonify({'error': 'File not found'}), 404
         return send_file(file_path, as_attachment=True)
     except Exception as e:
-        logger.error(f"Error downloading file: {str(e)}")
-        return jsonify({'error': 'Failed to download file'}), 500
+        logger.error(f"Error sending file: {str(e)}")
+        return jsonify({'error': 'Failed to send file'}), 500
 
-@app.route('/api/download-video', methods=['POST'])
-def download_video():
-    """Download video from YouTube and save it to the server."""
-    youtube_url = request.json.get('url')
+@app.route('/api/delete-file', methods=['POST'])
+def delete_file():
+    data = request.json
+    filename = data.get('filename')
+
+    if not filename:
+        return jsonify({'error': 'No filename provided'}), 400
+
+    try:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return jsonify({'message': 'File deleted successfully'})
+        else:
+            return jsonify({'error': 'File not found'}), 404
+    except Exception as e:
+        logger.error(f"Error deleting file: {str(e)}")
+        return jsonify({'error': 'Failed to delete file'}), 500
+
+@app.route('/api/get-google-video-url', methods=['GET'])
+def get_google_video_url():
+    youtube_url = request.args.get('url')
     if not youtube_url:
-        return jsonify({"error": "URL is required"}), 400
-
+        return jsonify({"error": "No URL provided"}), 400
+    
     video_id = extract_video_id(youtube_url)
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL"}), 400
-
+    
     google_video_url = generate_google_video_url(video_id)
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{video_id}.mp4")
-
-    try:
-        download_from_google_video(google_video_url, file_path)
-        return send_file(file_path, as_attachment=True, attachment_filename=f"{video_id}.mp4")
-    except Exception as e:
-        logger.error(f"Error during video download: {e}")
-        return jsonify({"error": "Failed to download video"}), 500
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    """Handle file upload and save to server."""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        return jsonify({'message': 'File successfully uploaded'})
-    return jsonify({'error': 'File type not allowed'}), 400
+    
+    # Directly redirect to the Google video playback URL
+    return redirect(google_video_url, code=302)
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handle internal server errors."""
-    logger.error(f"Internal server error: {error}")
     return jsonify({'error': 'Internal server error'}), 500
-
-def download_from_google_video(url, file_path):
-    """Download video from the Google Video Playback URL."""
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-
-        with open(file_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-        return file_path
-    except requests.RequestException as e:
-        logger.error(f"Download failed: {e}")
-        raise
-
+    
 if __name__ == '__main__':
     app.run(debug=True)
