@@ -1,7 +1,7 @@
 import os
 import re
 import logging
-from flask import Flask, request, jsonify, send_file, redirect, make_response
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from moviepy.editor import VideoFileClip
 import requests
@@ -151,30 +151,11 @@ def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if not os.path.isfile(file_path):
-def extract_video_id(youtube_url):
-    """Extract the video ID from a YouTube URL."""
-    match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', youtube_url)
-    return match.group(1) if match else None
-
-def generate_google_video_url(video_id):
-    """Generate a Google Video Playback URL."""
-    base_url = f"https://www.youtube.com/watch?v={video_id}"
-    # Assuming the direct URL is usable. Actual URL may need proper format or headers.
-    return base_url
-
-def download_from_google_video(url, file_path):
-    """Download video from the Google Video Playback URL."""
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-
-        with open(file_path, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-        return file_path
-    except requests.RequestException as e:
-        logger.error(f"Download failed: {e}")
-        raise
+            return jsonify({'error': 'File not found'}), 404
+        return send_file(file_path, as_attachment=True)
+    except Exception as e:
+        logger.error(f"Error downloading file: {str(e)}")
+        return jsonify({'error': 'Failed to download file'}), 500
 
 @app.route('/api/download-video', methods=['POST'])
 def download_video():
@@ -219,6 +200,20 @@ def internal_error(error):
     """Handle internal server errors."""
     logger.error(f"Internal server error: {error}")
     return jsonify({'error': 'Internal server error'}), 500
-        
+
+def download_from_google_video(url, file_path):
+    """Download video from the Google Video Playback URL."""
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        with open(file_path, 'wb') as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+        return file_path
+    except requests.RequestException as e:
+        logger.error(f"Download failed: {e}")
+        raise
+
 if __name__ == '__main__':
     app.run(debug=True)
